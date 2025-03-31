@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# Demande à l'utilisateur d'entrer le nom de domaine
+read -p "Entrez le nom de domaine (ex: node0.arthonetwork.fr) : " DOMAIN
+
+# Vérification que le domaine n'est pas vide
+if [[ -z "$DOMAIN" ]]; then
+    echo "Erreur : aucun nom de domaine fourni."
+    exit 1
+fi
+
+# Définition des chemins du certificat et de la clé
+CERT_PATH="/etc/ssl/certs/$DOMAIN.crt"
+KEY_PATH="/etc/ssl/private/$DOMAIN.key"
+CONFIG_FILE="/etc/pelican/config.yml"
+
+# Vérifier si OpenSSL est installé
+if ! command -v openssl &> /dev/null; then
+    echo "OpenSSL n'est pas installé. Installation..."
+    sudo apt update && sudo apt install -y openssl
+fi
+
+# Création du certificat autosigné
+echo "Génération du certificat autosigné pour $DOMAIN..."
+sudo mkdir -p /etc/ssl/certs /etc/ssl/private
+sudo openssl req -x509 -newkey rsa:4096 -keyout "$KEY_PATH" -out "$CERT_PATH" -days 365 -nodes -subj "/CN=$DOMAIN"
+
+# Vérifier si le fichier de configuration existe avant modification
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "Erreur : le fichier de configuration $CONFIG_FILE n'existe pas."
+    exit 1
+fi
+
+# Sauvegarde du fichier de configuration avant modification
+echo "Sauvegarde du fichier de configuration..."
+sudo cp "$CONFIG_FILE" "$CONFIG_FILE.bak"
+
+# Mise à jour de la configuration
+echo "Mise à jour de la configuration avec le certificat généré..."
+sudo sed -i "s|cert: .*|cert: $CERT_PATH|" "$CONFIG_FILE"
+sudo sed -i "s|key: .*|key: $KEY_PATH|" "$CONFIG_FILE"
+
+# Redémarrer Pelican (adapter selon le service utilisé)
+echo "Redémarrage du service Pelican..."
+sudo systemctl restart pelican || echo "Attention : le service Pelican n'existe peut-être pas. Vérifiez son nom."
+
+echo "Configuration terminée avec succès !"
